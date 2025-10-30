@@ -119,50 +119,60 @@ class DataFilter:
             self.results_table.delete(row)
     
     def load_teachers(self):
-        cur = self.db_connection.cursor()
-        cur.execute(LOAD_TEACHERS_FOR_FILTER_SQL)
-        teachers = cur.fetchall()
-        cur.close()
-        self.teacher_combobox['values'] = [f"{teacher[1]} {teacher[2]} {teacher[3]}" for teacher in teachers]
+        try:
+            cur = self.db_connection.cursor()
+            cur.execute(LOAD_TEACHERS_FOR_FILTER_SQL)
+            teachers = cur.fetchall()
+            cur.close()
+            self.teacher_combobox['values'] = [f"{teacher[1]} {teacher[2]} {teacher[3]}" for teacher in teachers]
+        except Exception as e:
+            tk.messagebox.showerror("Ошибка", f"Ошибка при загрузке преподавателей: {str(e)}")
     
     def load_subjects(self):
-        cur = self.db_connection.cursor()
-        cur.execute(LOAD_SUBJECTS_FOR_FILTER_SQL)
-        subjects = cur.fetchall()
-        cur.close()
-        self.subject_combobox['values'] = [subject[1] for subject in subjects]
+        try:
+            cur = self.db_connection.cursor()
+            cur.execute(LOAD_SUBJECTS_FOR_FILTER_SQL)
+            subjects = cur.fetchall()
+            cur.close()
+            self.subject_combobox['values'] = [subject[1] for subject in subjects]
+        except Exception as e:
+            tk.messagebox.showerror("Ошибка", f"Ошибка при загрузке предметов: {str(e)}")
     
     def apply_filter(self):
-        teacher_name = self.teacher_combobox.get()
-        subject_name = self.subject_combobox.get()
-        
-        teacher_id = None
-        subject_id = None
-        
-        if teacher_name:
+        try:
+            teacher_name = self.teacher_combobox.get()
+            subject_name = self.subject_combobox.get()
+            
+            teacher_id = None
+            subject_id = None
+            
+            if teacher_name:
+                cur = self.db_connection.cursor()
+                cur.execute(TEACHER_FILTER_SQL, (teacher_name,))
+                result = cur.fetchone()
+                if result:
+                    teacher_id = result[0]
+                cur.close()
+            
+            if subject_name:
+                cur = self.db_connection.cursor()
+                cur.execute(SUBJECT_FILTER_SQL, (subject_name,))
+                result = cur.fetchone()
+                if result:
+                    subject_id = result[0]
+                cur.close()
+            
             cur = self.db_connection.cursor()
-            cur.execute(TEACHER_FILTER_SQL, (teacher_name,))
-            result = cur.fetchone()
-            if result:
-                teacher_id = result[0]
+            cur.execute(
+                APPLY_FILTERS_SQL, (teacher_id, teacher_id, subject_id, subject_id)
+            )
+            results = cur.fetchall()
             cur.close()
-        
-        if subject_name:
-            cur = self.db_connection.cursor()
-            cur.execute(SUBJECT_FILTER_SQL, (subject_name,))
-            result = cur.fetchone()
-            if result:
-                subject_id = result[0]
-            cur.close()
-        
-        cur = self.db_connection.cursor()
-        cur.execute(
-            APPLY_FILTERS_SQL, (teacher_id, teacher_id, subject_id, subject_id)
-        )
-        results = cur.fetchall()
-        cur.close()
-        
-        for row in self.results_table.get_children():
-            self.results_table.delete(row)
-        for result in results:
-            self.results_table.insert('', 'end', values=result)
+            
+            for row in self.results_table.get_children():
+                self.results_table.delete(row)
+            for result in results:
+                self.results_table.insert('', 'end', values=result)
+                
+        except Exception as e:
+            tk.messagebox.showerror("Ошибка", f"Ошибка при применении фильтра: {str(e)}")

@@ -42,48 +42,47 @@ class WorkloadApp(tk.Tk):
         
         self.style.configure('Treeview',
                             rowheight=25,
-                            font=('Arial', 9),
                             background='#ffffff',
-                            fieldbackground='#ffffff')
-        self.style.configure('Treeview.Heading',
-                            font=('Arial', 10, 'bold'),
-                            background='#e0ffe0')
+                            fieldbackground='#ffffff',
+                            foreground='black',
+                            font=('Arial', 10))
         
-        # Цвет основного окна
-        self.configure(bg='#f0fff0')
+        self.style.configure('Treeview.Heading',
+                            background='#98fb98',
+                            foreground='black',
+                            font=('Arial', 10, 'bold'))
         
         self.create_widgets()
-        self.show()
     
     def create_widgets(self):
-        tab_control = ttk.Notebook(self)
+        # Создаем Notebook для вкладок
+        self.notebook = ttk.Notebook(self)
+        self.notebook.pack(fill='both', expand=True, padx=10, pady=10)
         
-        # Преподаватели
-        self.teachers_frame = ttk.Frame(tab_control)
-        tab_control.add(self.teachers_frame, text='Преподаватели')
-        self.teachers = Teachers(self.teachers_frame, self.db_connection)
+        # Создаем фреймы для каждой вкладки
+        self.teachers_frame = ttk.Frame(self.notebook)
+        self.subjects_frame = ttk.Frame(self.notebook)
+        self.workload_frame = ttk.Frame(self.notebook)
+        self.filter_frame = ttk.Frame(self.notebook)
         
-        # Предметы
-        self.subjects_frame = ttk.Frame(tab_control)
-        tab_control.add(self.subjects_frame, text='Предметы')
-        self.subjects = Subjects(self.subjects_frame, self.db_connection)
+        self.notebook.add(self.teachers_frame, text='Преподаватели')
+        self.notebook.add(self.subjects_frame, text='Предметы')
+        self.notebook.add(self.workload_frame, text='Распределение нагрузки')
+        self.notebook.add(self.filter_frame, text='Фильтрация данных')
         
-        # Распределение нагрузки
-        self.workload_frame = ttk.Frame(tab_control)
-        tab_control.add(self.workload_frame, text='Распределение нагрузки')
-        self.workload = WorkloadDistribution(self.workload_frame, self.db_connection)
-        
-        # Фильтрация данных
-        self.filter_frame = ttk.Frame(tab_control)
-        tab_control.add(self.filter_frame, text='Фильтрация данных')
-        self.data_filter = DataFilter(self.filter_frame, self.db_connection)
-        
-        tab_control.pack(expand=1, fill='both')
-    
-    def show(self):
-        self.teachers.show_teachers()
-        self.subjects.show_subjects()
-        self.workload.show_workload()
+        # Инициализируем классы для каждой вкладки
+        try:
+            self.teachers = Teachers(self.teachers_frame, self.db_connection)
+            self.subjects = Subjects(self.subjects_frame, self.db_connection)
+            self.workload = WorkloadDistribution(self.workload_frame, self.db_connection)
+            self.data_filter = DataFilter(self.filter_frame, self.db_connection)
+            
+            # Показываем данные при запуске
+            self.teachers.show_teachers()
+            self.subjects.show_subjects()
+            
+        except Exception as e:
+            tk.messagebox.showerror("Ошибка", f"Ошибка при инициализации приложения: {str(e)}")
 
 def main():
     conn = None
@@ -93,6 +92,7 @@ def main():
         app.mainloop()
     except Exception as e:
         print(f"An error occurred: {e}")
+        tk.messagebox.showerror("Ошибка", f"Ошибка при запуске приложения: {str(e)}")
     finally:
         if conn:
             conn.close()

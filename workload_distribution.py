@@ -13,8 +13,8 @@ from sql_requests import (
 class WorkloadDistribution:
     def __init__(self, parent_frame, db_connection):
         self.parent_frame = parent_frame
-        self.create_workload_form()
         self.db_connection = db_connection
+        self.create_workload_form()
     
     def create_workload_form(self):
         labels = ['ID', 'Преподаватель', 'Предмет', 'Группа']
@@ -69,28 +69,43 @@ class WorkloadDistribution:
         # Загружаем данные в комбобоксы
         self.load_teachers()
         self.load_subjects()
+        # Показываем текущую нагрузку
+        self.show_workload()
     
     def load_teachers(self):
-        cur = self.db_connection.cursor()
-        cur.execute(FETCH_TEACHERS_FOR_WORKLOAD_SQL)
-        teachers = cur.fetchall()
-        cur.close()
-        self.teacher_combobox['values'] = [f"{teacher[1]} {teacher[2]} {teacher[3]}" for teacher in teachers]
+        try:
+            cur = self.db_connection.cursor()
+            cur.execute(FETCH_TEACHERS_FOR_WORKLOAD_SQL)
+            teachers = cur.fetchall()
+            cur.close()
+            self.teacher_combobox['values'] = [f"{teacher[1]} {teacher[2]} {teacher[3]}" for teacher in teachers]
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Ошибка при загрузке преподавателей: {str(e)}")
     
     def load_subjects(self):
-        cur = self.db_connection.cursor()
-        cur.execute(FETCH_SUBJECTS_FOR_WORKLOAD_SQL)
-        subjects = cur.fetchall()
-        cur.close()
-        self.subject_combobox['values'] = [subject[1] for subject in subjects]
+        try:
+            cur = self.db_connection.cursor()
+            cur.execute(FETCH_SUBJECTS_FOR_WORKLOAD_SQL)
+            subjects = cur.fetchall()
+            cur.close()
+            self.subject_combobox['values'] = [subject[1] for subject in subjects]
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Ошибка при загрузке предметов: {str(e)}")
     
     def fill_entries(self, event):
-        selected_item = self.workload_table.selection()[0]
-        values = self.workload_table.item(selected_item, 'values')
-        self.teacher_combobox.set(values[1])
-        self.subject_combobox.set(values[2])
-        self.group_entry.delete(0, tk.END)
-        self.group_entry.insert(0, values[3])
+        try:
+            selected_items = self.workload_table.selection()
+            if not selected_items:
+                return
+            
+            selected_item = selected_items[0]
+            values = self.workload_table.item(selected_item, 'values')
+            self.teacher_combobox.set(values[1])
+            self.subject_combobox.set(values[2])
+            self.group_entry.delete(0, tk.END)
+            self.group_entry.insert(0, values[3])
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Ошибка при заполнении полей: {str(e)}")
     
     def save_workload(self):
         try:
@@ -131,14 +146,20 @@ class WorkloadDistribution:
             
         except Exception as e:
             messagebox.showerror("Ошибка", f"Ошибка при сохранении нагрузки: {str(e)}")
-            self.db_connection.rollback()
+            try:
+                self.db_connection.rollback()
+            except:
+                pass
     
     def show_workload(self):
-        workload = self.fetch_workload()
-        for row in self.workload_table.get_children():
-            self.workload_table.delete(row)
-        for item in workload:
-            self.workload_table.insert('', 'end', values=item)
+        try:
+            workload = self.fetch_workload()
+            for row in self.workload_table.get_children():
+                self.workload_table.delete(row)
+            for item in workload:
+                self.workload_table.insert('', 'end', values=item)
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Ошибка при загрузке нагрузки: {str(e)}")
     
     def fetch_workload(self):
         cur = self.db_connection.cursor()
@@ -172,7 +193,10 @@ class WorkloadDistribution:
             
         except Exception as e:
             messagebox.showerror("Ошибка", f"Ошибка при удалении записи: {str(e)}")
-            self.db_connection.rollback()
+            try:
+                self.db_connection.rollback()
+            except:
+                pass
     
     def edit_record(self):
         try:
@@ -221,7 +245,10 @@ class WorkloadDistribution:
             
         except Exception as e:
             messagebox.showerror("Ошибка", f"Ошибка при редактировании записи: {str(e)}")
-            self.db_connection.rollback()
+            try:
+                self.db_connection.rollback()
+            except:
+                pass
     
     def clear_entries(self):
         self.teacher_combobox.set('')
