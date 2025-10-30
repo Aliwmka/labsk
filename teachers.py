@@ -1,3 +1,4 @@
+# teachers.py
 from tkinter import ttk
 import tkinter as tk
 from tkinter import messagebox
@@ -9,10 +10,11 @@ from sql_requests import (
 )
 
 class Teachers:
-    def __init__(self, parent_frame, db_connection):
+    def __init__(self, parent_frame, db_connection, app=None):
         self.parent_frame = parent_frame
-        self.create_teachers_form()
         self.db_connection = db_connection
+        self.app = app
+        self.create_teachers_form()
     
     def create_teachers_form(self):
         labels = ['ID', 'Фамилия', 'Имя', 'Отчество', 'Ученая степень', 'Должность', 'Стаж']
@@ -52,10 +54,20 @@ class Teachers:
         delete_button = ttk.Button(buttons_frame, text="Удалить запись", command=self.delete_record)
         delete_button.grid(row=0, column=3, padx=5, pady=5)
         
+        refresh_button = ttk.Button(buttons_frame, text="Обновить", command=self.show_teachers)
+        refresh_button.grid(row=0, column=4, padx=5, pady=5)
+        
+        import_button = ttk.Button(buttons_frame, text="Импорт из Excel", command=self.handle_import_excel)
+        import_button.grid(row=0, column=5, padx=5, pady=5)
+        
         # Добавляем событие двойного щелчка
         self.teachers_table.bind("<Double-1>", self.fill_entries)
+        
+        self.show_teachers()
     
     def fill_entries(self, event):
+        if not self.teachers_table.selection():
+            return
         selected_item = self.teachers_table.selection()[0]
         values = self.teachers_table.item(selected_item, 'values')
         for entry, value in zip(self.teacher_entries, values[1:]):  # Пропускаем 'ID'
@@ -63,59 +75,38 @@ class Teachers:
             entry.insert(0, value)
     
     def save_teacher(self):
+        data = [entry.get() for entry in self.teacher_entries]
+        
+        # Проверка обязательных полей
+        if not data[0] or not data[1]:  # Фамилия и Имя обязательны
+            messagebox.showwarning("Предупреждение", "Фамилия и Имя являются обязательными полями!")
+            return
+        
         try:
-            data = self.validate_teacher_data()
-            if data is None:
-                return
+            # Проверяем числовое поле стажа
+            experience = int(data[5]) if data[5] else 0
             
             self.insert_teacher(data)
             self.show_teachers()
             self.clear_entries()
-            messagebox.showinfo("Успех", "Преподаватель успешно сохранен!")
+            messagebox.showinfo("Успех", "Преподаватель успешно добавлен!")
             
-        except Exception as e:
-            messagebox.showerror("Ошибка", f"Ошибка при сохранении преподавателя: {str(e)}")
-            self.db_connection.rollback()
-    
-    def validate_teacher_data(self):
-        """Проверка и преобразование данных преподавателя"""
-        raw_data = [entry.get().strip() for entry in self.teacher_entries]
-        
-        # Проверяем обязательные поля
-        if not raw_data[0]:  # Фамилия
-            messagebox.showwarning("Предупреждение", "Поле 'Фамилия' обязательно для заполнения")
-            return None
-        if not raw_data[1]:  # Имя
-            messagebox.showwarning("Предупреждение", "Поле 'Имя' обязательно для заполнения")
-            return None
-        
-        # Преобразуем стаж в число
-        try:
-            experience = int(raw_data[5]) if raw_data[5] else 0
+            # Обновляем данные в других модулях
+            if self.app:
+                if hasattr(self.app, 'workload'):
+                    self.app.workload.refresh_data()
+                if hasattr(self.app, 'data_filter'):
+                    self.app.data_filter.refresh_data()
         except ValueError:
-            messagebox.showwarning("Предупреждение", "Поле 'Стаж' должно быть числом")
-            return None
-        
-        # Возвращаем проверенные данные
-        return [
-            raw_data[0],  # Фамилия
-            raw_data[1],  # Имя
-            raw_data[2],  # Отчество
-            raw_data[3],  # Ученая степень
-            raw_data[4],  # Должность
-            experience    # Стаж
-        ]
+            messagebox.showerror("Ошибка", "Стаж должен быть числом!")
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Не удалось добавить преподавателя: {e}")
     
     def insert_teacher(self, data):
         cur = self.db_connection.cursor()
-        try:
-            cur.execute(INSERT_TEACHER_SQL, data)
-            self.db_connection.commit()
-        except Exception as e:
-            self.db_connection.rollback()
-            raise e
-        finally:
-            cur.close()
+        cur.execute(INSERT_TEACHER_SQL, data)
+        self.db_connection.commit()
+        cur.close()
     
     def show_teachers(self):
         teachers = self.fetch_teachers()
@@ -132,59 +123,142 @@ class Teachers:
         return teachers
     
     def delete_record(self):
+        if not self.teachers_table.selection():
+            messagebox.showwarning("Предупреждение", "Выберите запись для удаления!")
+            return
+        
+        selected_item = self.teachers_table.selection()[0]
+        teacher_id = self.teachers_table.item(selected_item, 'values')[0]
+        teacher_name = f"{self.teachers_table.item(selected_item, 'values')[1]} {self.teachers_table.item(selected_item, 'values')[2]}"
+        
+        # Подтверждение удаления
+        result = messagebox.askyesno(
+            "Подтверждение удаления", 
+            f"Вы уверены, что хотите удалить преподавателя '{teacher_name}'?\nВсе связанные записи нагрузки также будут удалены."
+        )
+        
+        if not result:
+            return
+        
         try:
-            selected_items = self.teachers_table.selection()
-            if not selected_items:
-                messagebox.showwarning("Предупреждение", "Выберите запись для удаления")
-                return
-            
-            selected_item = selected_items[0]
-            teacher_id = self.teachers_table.item(selected_item, 'values')[0]
-            
-            # Подтверждение удаления
-            result = messagebox.askyesno("Подтверждение", "Вы уверены, что хотите удалить эту запись?")
-            if not result:
-                return
-            
             cur = self.db_connection.cursor()
             cur.execute(DELETE_TEACHER_SQL, (teacher_id,))
             self.db_connection.commit()
             cur.close()
             
             self.teachers_table.delete(selected_item)
-            messagebox.showinfo("Успех", "Запись успешно удалена!")
+            self.clear_entries()
+            messagebox.showinfo("Успех", "Преподаватель и все связанные записи нагрузки успешно удалены!")
             
+            # Обновляем данные в других модулях
+            if self.app:
+                if hasattr(self.app, 'workload'):
+                    self.app.workload.refresh_data()
+                    self.app.workload.show_workload()
+                if hasattr(self.app, 'data_filter'):
+                    self.app.data_filter.refresh_data()
         except Exception as e:
-            messagebox.showerror("Ошибка", f"Ошибка при удалении записи: {str(e)}")
             self.db_connection.rollback()
+            messagebox.showerror("Ошибка", f"Не удалось удалить преподавателя: {e}")
     
     def edit_record(self):
+        if not self.teachers_table.selection():
+            messagebox.showwarning("Предупреждение", "Выберите запись для редактирования!")
+            return
+        
+        selected_item = self.teachers_table.selection()[0]
+        teacher_id = self.teachers_table.item(selected_item, 'values')[0]
+        data = [entry.get() for entry in self.teacher_entries]
+        
+        # Проверка обязательных полей
+        if not data[0] or not data[1]:  # Фамилия и Имя обязательны
+            messagebox.showwarning("Предупреждение", "Фамилия и Имя являются обязательными полями!")
+            return
+        
         try:
-            selected_items = self.teachers_table.selection()
-            if not selected_items:
-                messagebox.showwarning("Предупреждение", "Выберите запись для редактирования")
-                return
-            
-            selected_item = selected_items[0]
-            teacher_id = self.teachers_table.item(selected_item, 'values')[0]
-            
-            data = self.validate_teacher_data()
-            if data is None:
-                return
+            # Проверяем числовое поле стажа
+            experience = int(data[5]) if data[5] else 0
             
             cur = self.db_connection.cursor()
             cur.execute(EDIT_TEACHER_SQL, (*data, teacher_id))
             self.db_connection.commit()
             cur.close()
-            
             self.show_teachers()
             self.clear_entries()
-            messagebox.showinfo("Успех", "Запись успешно обновлена!")
+            messagebox.showinfo("Успех", "Данные преподавателя успешно обновлены!")
             
+            # Обновляем данные в других модулях
+            if self.app:
+                if hasattr(self.app, 'workload'):
+                    self.app.workload.refresh_data()
+                    self.app.workload.show_workload()
+                if hasattr(self.app, 'data_filter'):
+                    self.app.data_filter.refresh_data()
+        except ValueError:
+            messagebox.showerror("Ошибка", "Стаж должен быть числом!")
         except Exception as e:
-            messagebox.showerror("Ошибка", f"Ошибка при редактировании записи: {str(e)}")
-            self.db_connection.rollback()
+            messagebox.showerror("Ошибка", f"Не удалось обновить данные: {e}")
     
     def clear_entries(self):
         for entry in self.teacher_entries:
             entry.delete(0, tk.END)
+    
+    def handle_import_excel(self):
+        def on_data(headers, rows):
+            self.process_imported_teachers(headers, rows)
+        
+        from import_data import import_teachers_from_excel
+        import_teachers_from_excel(self.parent_frame.winfo_toplevel(), on_data)
+    
+    def process_imported_teachers(self, headers, rows):
+        try:
+            imported_count = 0
+            skipped_count = 0
+            
+            for row in rows:
+                if len(row) < 6:
+                    skipped_count += 1
+                    continue
+                    
+                last_name = str(row[0]).strip() if row[0] else ""
+                first_name = str(row[1]).strip() if row[1] else ""
+                middle_name = str(row[2]).strip() if row[2] else ""
+                academic_degree = str(row[3]).strip() if row[3] else ""
+                position = str(row[4]).strip() if row[4] else ""
+                experience = str(row[5]).strip() if row[5] else ""
+                
+                # Проверяем обязательные поля
+                if not last_name or not first_name:
+                    skipped_count += 1
+                    continue
+                
+                try:
+                    # Преобразуем числовые поля
+                    experience_int = int(experience) if experience else 0
+                    
+                    cur = self.db_connection.cursor()
+                    cur.execute(INSERT_TEACHER_SQL, (last_name, first_name, middle_name, academic_degree, position, experience_int))
+                    self.db_connection.commit()
+                    cur.close()
+                    imported_count += 1
+                    
+                except (ValueError, Exception) as e:
+                    skipped_count += 1
+                    continue
+            
+            self.show_teachers()
+            
+            # Обновляем данные в других модулях
+            if self.app:
+                if hasattr(self.app, 'workload'):
+                    self.app.workload.refresh_data()
+                if hasattr(self.app, 'data_filter'):
+                    self.app.data_filter.refresh_data()
+            
+            message = f"Импорт преподавателей завершен!\nУспешно: {imported_count} записей"
+            if skipped_count > 0:
+                message += f"\nПропущено: {skipped_count} записей (некорректные данные)"
+            messagebox.showinfo("Успех", message)
+            
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Не удалось импортировать преподавателей: {str(e)}")
