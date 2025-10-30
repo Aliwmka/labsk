@@ -1,5 +1,6 @@
 from tkinter import ttk
 import tkinter as tk
+from tkinter import messagebox
 from sql_requests import (
     INSERT_TEACHER_SQL,
     FETCH_TEACHERS_SQL,
@@ -62,16 +63,59 @@ class Teachers:
             entry.insert(0, value)
     
     def save_teacher(self):
-        data = [entry.get() for entry in self.teacher_entries]
-        self.insert_teacher(data)
-        self.show_teachers()
-        self.clear_entries()
+        try:
+            data = self.validate_teacher_data()
+            if data is None:
+                return
+            
+            self.insert_teacher(data)
+            self.show_teachers()
+            self.clear_entries()
+            messagebox.showinfo("Успех", "Преподаватель успешно сохранен!")
+            
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Ошибка при сохранении преподавателя: {str(e)}")
+            self.db_connection.rollback()
+    
+    def validate_teacher_data(self):
+        """Проверка и преобразование данных преподавателя"""
+        raw_data = [entry.get().strip() for entry in self.teacher_entries]
+        
+        # Проверяем обязательные поля
+        if not raw_data[0]:  # Фамилия
+            messagebox.showwarning("Предупреждение", "Поле 'Фамилия' обязательно для заполнения")
+            return None
+        if not raw_data[1]:  # Имя
+            messagebox.showwarning("Предупреждение", "Поле 'Имя' обязательно для заполнения")
+            return None
+        
+        # Преобразуем стаж в число
+        try:
+            experience = int(raw_data[5]) if raw_data[5] else 0
+        except ValueError:
+            messagebox.showwarning("Предупреждение", "Поле 'Стаж' должно быть числом")
+            return None
+        
+        # Возвращаем проверенные данные
+        return [
+            raw_data[0],  # Фамилия
+            raw_data[1],  # Имя
+            raw_data[2],  # Отчество
+            raw_data[3],  # Ученая степень
+            raw_data[4],  # Должность
+            experience    # Стаж
+        ]
     
     def insert_teacher(self, data):
         cur = self.db_connection.cursor()
-        cur.execute(INSERT_TEACHER_SQL, data)
-        self.db_connection.commit()
-        cur.close()
+        try:
+            cur.execute(INSERT_TEACHER_SQL, data)
+            self.db_connection.commit()
+        except Exception as e:
+            self.db_connection.rollback()
+            raise e
+        finally:
+            cur.close()
     
     def show_teachers(self):
         teachers = self.fetch_teachers()
@@ -88,24 +132,58 @@ class Teachers:
         return teachers
     
     def delete_record(self):
-        selected_item = self.teachers_table.selection()[0]
-        teacher_id = self.teachers_table.item(selected_item, 'values')[0]
-        cur = self.db_connection.cursor()
-        cur.execute(DELETE_TEACHER_SQL, (teacher_id,))
-        self.db_connection.commit()
-        cur.close()
-        self.teachers_table.delete(selected_item)
+        try:
+            selected_items = self.teachers_table.selection()
+            if not selected_items:
+                messagebox.showwarning("Предупреждение", "Выберите запись для удаления")
+                return
+            
+            selected_item = selected_items[0]
+            teacher_id = self.teachers_table.item(selected_item, 'values')[0]
+            
+            # Подтверждение удаления
+            result = messagebox.askyesno("Подтверждение", "Вы уверены, что хотите удалить эту запись?")
+            if not result:
+                return
+            
+            cur = self.db_connection.cursor()
+            cur.execute(DELETE_TEACHER_SQL, (teacher_id,))
+            self.db_connection.commit()
+            cur.close()
+            
+            self.teachers_table.delete(selected_item)
+            messagebox.showinfo("Успех", "Запись успешно удалена!")
+            
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Ошибка при удалении записи: {str(e)}")
+            self.db_connection.rollback()
     
     def edit_record(self):
-        selected_item = self.teachers_table.selection()[0]
-        teacher_id = self.teachers_table.item(selected_item, 'values')[0]
-        data = [entry.get() for entry in self.teacher_entries]
-        cur = self.db_connection.cursor()
-        cur.execute(EDIT_TEACHER_SQL, (*data, teacher_id))
-        self.db_connection.commit()
-        cur.close()
-        self.show_teachers()
-        self.clear_entries()
+        try:
+            selected_items = self.teachers_table.selection()
+            if not selected_items:
+                messagebox.showwarning("Предупреждение", "Выберите запись для редактирования")
+                return
+            
+            selected_item = selected_items[0]
+            teacher_id = self.teachers_table.item(selected_item, 'values')[0]
+            
+            data = self.validate_teacher_data()
+            if data is None:
+                return
+            
+            cur = self.db_connection.cursor()
+            cur.execute(EDIT_TEACHER_SQL, (*data, teacher_id))
+            self.db_connection.commit()
+            cur.close()
+            
+            self.show_teachers()
+            self.clear_entries()
+            messagebox.showinfo("Успех", "Запись успешно обновлена!")
+            
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Ошибка при редактировании записи: {str(e)}")
+            self.db_connection.rollback()
     
     def clear_entries(self):
         for entry in self.teacher_entries:

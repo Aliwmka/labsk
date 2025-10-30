@@ -1,5 +1,6 @@
 from tkinter import ttk
 import tkinter as tk
+from tkinter import messagebox
 from sql_requests import (
     INSERT_SUBJECT_SQL,
     FETCH_SUBJECTS_SQL,
@@ -62,16 +63,52 @@ class Subjects:
             entry.insert(0, value)
     
     def save_subject(self):
-        data = [entry.get() for entry in self.subject_entries]
-        self.insert_subject(data)
-        self.show_subjects()
-        self.clear_entries()
+        try:
+            data = self.validate_subject_data()
+            if data is None:
+                return
+            
+            self.insert_subject(data)
+            self.show_subjects()
+            self.clear_entries()
+            messagebox.showinfo("Успех", "Предмет успешно сохранен!")
+            
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Ошибка при сохранении предмета: {str(e)}")
+            self.db_connection.rollback()
+    
+    def validate_subject_data(self):
+        """Проверка и преобразование данных предмета"""
+        raw_data = [entry.get().strip() for entry in self.subject_entries]
+        
+        # Проверяем обязательные поля
+        if not raw_data[0]:  # Название предмета
+            messagebox.showwarning("Предупреждение", "Поле 'Название предмета' обязательно для заполнения")
+            return None
+        
+        # Преобразуем часы в число
+        try:
+            hours = int(raw_data[1]) if raw_data[1] else 0
+        except ValueError:
+            messagebox.showwarning("Предупреждение", "Поле 'Количество часов' должно быть числом")
+            return None
+        
+        # Возвращаем проверенные данные
+        return [
+            raw_data[0],  # Название предмета
+            hours         # Количество часов
+        ]
     
     def insert_subject(self, data):
         cur = self.db_connection.cursor()
-        cur.execute(INSERT_SUBJECT_SQL, data)
-        self.db_connection.commit()
-        cur.close()
+        try:
+            cur.execute(INSERT_SUBJECT_SQL, data)
+            self.db_connection.commit()
+        except Exception as e:
+            self.db_connection.rollback()
+            raise e
+        finally:
+            cur.close()
     
     def show_subjects(self):
         subjects = self.fetch_subjects()
@@ -88,24 +125,58 @@ class Subjects:
         return subjects
     
     def delete_record(self):
-        selected_item = self.subjects_table.selection()[0]
-        subject_id = self.subjects_table.item(selected_item, 'values')[0]
-        cur = self.db_connection.cursor()
-        cur.execute(DELETE_SUBJECT_SQL, (subject_id,))
-        self.db_connection.commit()
-        cur.close()
-        self.subjects_table.delete(selected_item)
+        try:
+            selected_items = self.subjects_table.selection()
+            if not selected_items:
+                messagebox.showwarning("Предупреждение", "Выберите запись для удаления")
+                return
+            
+            selected_item = selected_items[0]
+            subject_id = self.subjects_table.item(selected_item, 'values')[0]
+            
+            # Подтверждение удаления
+            result = messagebox.askyesno("Подтверждение", "Вы уверены, что хотите удалить эту запись?")
+            if not result:
+                return
+            
+            cur = self.db_connection.cursor()
+            cur.execute(DELETE_SUBJECT_SQL, (subject_id,))
+            self.db_connection.commit()
+            cur.close()
+            
+            self.subjects_table.delete(selected_item)
+            messagebox.showinfo("Успех", "Запись успешно удалена!")
+            
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Ошибка при удалении записи: {str(e)}")
+            self.db_connection.rollback()
     
     def edit_record(self):
-        selected_item = self.subjects_table.selection()[0]
-        subject_id = self.subjects_table.item(selected_item, 'values')[0]
-        data = [entry.get() for entry in self.subject_entries]
-        cur = self.db_connection.cursor()
-        cur.execute(EDIT_SUBJECT_SQL, (*data, subject_id))
-        self.db_connection.commit()
-        cur.close()
-        self.show_subjects()
-        self.clear_entries()
+        try:
+            selected_items = self.subjects_table.selection()
+            if not selected_items:
+                messagebox.showwarning("Предупреждение", "Выберите запись для редактирования")
+                return
+            
+            selected_item = selected_items[0]
+            subject_id = self.subjects_table.item(selected_item, 'values')[0]
+            
+            data = self.validate_subject_data()
+            if data is None:
+                return
+            
+            cur = self.db_connection.cursor()
+            cur.execute(EDIT_SUBJECT_SQL, (*data, subject_id))
+            self.db_connection.commit()
+            cur.close()
+            
+            self.show_subjects()
+            self.clear_entries()
+            messagebox.showinfo("Успех", "Запись успешно обновлена!")
+            
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Ошибка при редактировании записи: {str(e)}")
+            self.db_connection.rollback()
     
     def clear_entries(self):
         for entry in self.subject_entries:
