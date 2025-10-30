@@ -1,5 +1,7 @@
 from tkinter import ttk
-from export import export_to_word, export_to_excel
+import tkinter as tk
+from tkinter import filedialog, messagebox
+from export import export_to_word, export_to_excel, import_from_excel
 from sql_requests import (
     LOAD_TEACHERS_FOR_FILTER_SQL,
     LOAD_SUBJECTS_FOR_FILTER_SQL,
@@ -49,22 +51,33 @@ class DataFilter:
         buttons_frame.columnconfigure(1, weight=1)
         buttons_frame.columnconfigure(2, weight=1)
         buttons_frame.columnconfigure(3, weight=1)
+        buttons_frame.columnconfigure(4, weight=1)
         
-        ttk.Button(buttons_frame, text="Применить фильтр", command=self.apply_filter).grid(row=0, column=0, padx=5,
-                                                                                         pady=5, sticky='ew')
-        ttk.Button(buttons_frame, text="Очистить", command=self.clear_filters).grid(row=0, column=1, padx=5, pady=5,
-                                                                                   sticky='ew')
+        # Первый ряд кнопок
+        ttk.Button(buttons_frame, text="Применить фильтр", command=self.apply_filter).grid(
+            row=0, column=0, padx=5, pady=5, sticky='ew')
+        
+        ttk.Button(buttons_frame, text="Очистить", command=self.clear_filters).grid(
+            row=0, column=1, padx=5, pady=5, sticky='ew')
         
         word_button = ttk.Button(buttons_frame, text="Экспорт в Word", command=self.export_to_word)
-        word_button.grid(row=1, column=0, padx=5, pady=5, sticky='ew')
+        word_button.grid(row=0, column=2, padx=5, pady=5, sticky='ew')
         
         excel_button = ttk.Button(buttons_frame, text="Экспорт в Excel", command=self.export_to_excel)
-        excel_button.grid(row=1, column=1, padx=5, pady=5, sticky='ew')
+        excel_button.grid(row=0, column=3, padx=5, pady=5, sticky='ew')
         
-        # Устанавливаем одинаковую ширину для кнопок
-        max_button_width = max(word_button.winfo_reqwidth(), excel_button.winfo_reqwidth())
-        word_button.config(width=max_button_width)
-        excel_button.config(width=max_button_width)
+        # Второй ряд кнопок - импорт
+        ttk.Button(buttons_frame, text="Импорт преподавателей", command=lambda: self.import_data("teachers")).grid(
+            row=1, column=0, padx=5, pady=5, sticky='ew')
+        
+        ttk.Button(buttons_frame, text="Импорт предметов", command=lambda: self.import_data("subjects")).grid(
+            row=1, column=1, padx=5, pady=5, sticky='ew')
+        
+        ttk.Button(buttons_frame, text="Импорт нагрузки", command=lambda: self.import_data("workload")).grid(
+            row=1, column=2, padx=5, pady=5, sticky='ew')
+        
+        ttk.Button(buttons_frame, text="Обновить данные", command=self.refresh_data).grid(
+            row=1, column=3, padx=5, pady=5, sticky='ew')
         
         self.load_teachers()
         self.load_subjects()
@@ -74,6 +87,25 @@ class DataFilter:
     
     def export_to_excel(self):
         export_to_excel(self)
+    
+    def import_data(self, table_type):
+        """Импорт данных из Excel для указанного типа таблицы"""
+        try:
+            import_from_excel(self, table_type)
+            # После импорта обновляем комбобоксы
+            self.load_teachers()
+            self.load_subjects()
+            # Обновляем таблицу результатов
+            self.apply_filter()
+        except Exception as e:
+            messagebox.showerror("Ошибка импорта", f"Ошибка при импорте данных: {str(e)}")
+    
+    def refresh_data(self):
+        """Обновление всех данных"""
+        self.load_teachers()
+        self.load_subjects()
+        self.apply_filter()
+        messagebox.showinfo("Обновление", "Данные успешно обновлены!")
     
     def clear_filters(self):
         self.teacher_combobox.set('')
