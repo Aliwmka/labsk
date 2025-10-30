@@ -105,13 +105,17 @@ class DataFilter:
         if teacher_name:
             cur = self.db_connection.cursor()
             cur.execute(TEACHER_FILTER_SQL, (teacher_name,))
-            teacher_id = cur.fetchone()[0]
+            result = cur.fetchone()
+            if result:
+                teacher_id = result[0]
             cur.close()
         
         if subject_name:
             cur = self.db_connection.cursor()
             cur.execute(SUBJECT_FILTER_SQL, (subject_name,))
-            subject_id = cur.fetchone()[0]
+            result = cur.fetchone()
+            if result:
+                subject_id = result[0]
             cur.close()
         
         cur = self.db_connection.cursor()

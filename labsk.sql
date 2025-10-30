@@ -272,7 +272,8 @@ ALTER TABLE ONLY public.workload
 --
 
 ALTER TABLE ONLY public.workload
-    ADD CONSTRAINT workload_subject_id_fkey FOREIGN KEY (subject_id) REFERENCES public.subjects(subject_id);
+    ADD CONSTRAINT workload_subject_id_fkey FOREIGN KEY (subject_id) REFERENCES public.subjects(subject_id)
+    ON UPDATE CASCADE ON DELETE CASCADE;
 
 
 --
@@ -281,7 +282,8 @@ ALTER TABLE ONLY public.workload
 --
 
 ALTER TABLE ONLY public.workload
-    ADD CONSTRAINT workload_teacher_id_fkey FOREIGN KEY (teacher_id) REFERENCES public.teachers(teacher_id);
+    ADD CONSTRAINT workload_teacher_id_fkey FOREIGN KEY (teacher_id) REFERENCES public.teachers(teacher_id)
+    ON UPDATE CASCADE ON DELETE CASCADE;
 
 
 -- Completed on 2025-10-19 16:09:37
@@ -291,4 +293,3 @@ ALTER TABLE ONLY public.workload
 --
 
 \unrestrict amhJxYf9oNDqKDS2JIDE7vCXCUKknMEx2wLYYrSPHtx1Eu1e3aucOThekkJM1Ke
-
