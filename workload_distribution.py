@@ -1,3 +1,4 @@
+# workload_distribution.py
 from tkinter import ttk
 import tkinter as tk
 from tkinter import messagebox
@@ -11,12 +12,15 @@ from sql_requests import (
 )
 
 class WorkloadDistribution:
-    def __init__(self, parent_frame, db_connection):
+    def __init__(self, parent_frame, db_connection, app=None):
         self.parent_frame = parent_frame
         self.db_connection = db_connection
+        self.app = app
         self.create_workload_form()
     
     def create_workload_form(self):
+        self.refresh_data()
+        
         labels = ['ID', 'Преподаватель', 'Предмет', 'Группа']
         
         # Выбор преподавателя
@@ -63,103 +67,79 @@ class WorkloadDistribution:
         delete_button = ttk.Button(buttons_frame, text="Удалить запись", command=self.delete_record)
         delete_button.grid(row=0, column=3, padx=5, pady=5)
         
+        refresh_button = ttk.Button(buttons_frame, text="Обновить", command=self.refresh_data)
+        refresh_button.grid(row=0, column=4, padx=5, pady=5)
+        
         # Добавляем событие двойного щелчка
         self.workload_table.bind("<Double-1>", self.fill_entries)
         
-        # Загружаем данные в комбобоксы
-        self.load_teachers()
-        self.load_subjects()
-        # Показываем текущую нагрузку
         self.show_workload()
     
-    def load_teachers(self):
-        try:
-            cur = self.db_connection.cursor()
-            cur.execute(FETCH_TEACHERS_FOR_WORKLOAD_SQL)
-            teachers = cur.fetchall()
-            cur.close()
-            self.teacher_combobox['values'] = [f"{teacher[1]} {teacher[2]} {teacher[3]}" for teacher in teachers]
-        except Exception as e:
-            messagebox.showerror("Ошибка", f"Ошибка при загрузке преподавателей: {str(e)}")
-    
-    def load_subjects(self):
-        try:
-            cur = self.db_connection.cursor()
-            cur.execute(FETCH_SUBJECTS_FOR_WORKLOAD_SQL)
-            subjects = cur.fetchall()
-            cur.close()
-            self.subject_combobox['values'] = [subject[1] for subject in subjects]
-        except Exception as e:
-            messagebox.showerror("Ошибка", f"Ошибка при загрузке предметов: {str(e)}")
+    def refresh_data(self):
+        """Обновление данных преподавателей и предметов"""
+        self.teachers = self.fetch_teachers()
+        self.subjects = self.fetch_subjects()
+        
+        if hasattr(self, 'teacher_combobox'):
+            self.teacher_combobox['values'] = [f"{teacher[1]} {teacher[2]} {teacher[3]}" for teacher in self.teachers]
+        
+        if hasattr(self, 'subject_combobox'):
+            self.subject_combobox['values'] = [f"{subject[1]}" for subject in self.subjects]
     
     def fill_entries(self, event):
-        try:
-            selected_items = self.workload_table.selection()
-            if not selected_items:
-                return
-            
-            selected_item = selected_items[0]
-            values = self.workload_table.item(selected_item, 'values')
-            self.teacher_combobox.set(values[1])
-            self.subject_combobox.set(values[2])
-            self.group_entry.delete(0, tk.END)
-            self.group_entry.insert(0, values[3])
-        except Exception as e:
-            messagebox.showerror("Ошибка", f"Ошибка при заполнении полей: {str(e)}")
+        if not self.workload_table.selection():
+            return
+        selected_item = self.workload_table.selection()[0]
+        values = self.workload_table.item(selected_item, 'values')
+        self.teacher_combobox.set(values[1])
+        self.subject_combobox.set(values[2])
+        self.group_entry.delete(0, tk.END)
+        self.group_entry.insert(0, values[3])
     
     def save_workload(self):
+        data = [
+            self.teacher_combobox.get(),
+            self.subject_combobox.get(),
+            self.group_entry.get()
+        ]
+        
+        if not data[0] or not data[1] or not data[2]:
+            messagebox.showwarning("Предупреждение", "Преподаватель, предмет и группа являются обязательными полями!")
+            return
+        
         try:
-            teacher_name = self.teacher_combobox.get()
-            subject_name = self.subject_combobox.get()
-            group_number = self.group_entry.get().strip()
-            
-            if not teacher_name or not subject_name or not group_number:
-                messagebox.showwarning("Предупреждение", "Заполните все поля")
-                return
-            
-            # Получаем ID преподавателя
-            cur = self.db_connection.cursor()
-            cur.execute("SELECT teacher_id FROM teachers WHERE CONCAT(last_name, ' ', first_name, ' ', middle_name) = %s", (teacher_name,))
-            teacher_result = cur.fetchone()
-            if not teacher_result:
-                messagebox.showwarning("Предупреждение", "Преподаватель не найден")
-                cur.close()
-                return
-            teacher_id = teacher_result[0]
-            
-            # Получаем ID предмета
-            cur.execute("SELECT subject_id FROM subjects WHERE subject_name = %s", (subject_name,))
-            subject_result = cur.fetchone()
-            if not subject_result:
-                messagebox.showwarning("Предупреждение", "Предмет не найден")
-                cur.close()
-                return
-            subject_id = subject_result[0]
-            
-            cur.execute(INSERT_WORKLOAD_SQL, (teacher_id, subject_id, group_number))
-            self.db_connection.commit()
-            cur.close()
-            
+            self.insert_workload(data)
             self.show_workload()
             self.clear_entries()
-            messagebox.showinfo("Успех", "Нагрузка успешно сохранена!")
+            messagebox.showinfo("Успех", "Нагрузка успешно добавлена!")
             
+            # Обновляем данные в фильтрах
+            if self.app and hasattr(self.app, 'data_filter'):
+                self.app.data_filter.refresh_data()
         except Exception as e:
-            messagebox.showerror("Ошибка", f"Ошибка при сохранении нагрузки: {str(e)}")
-            try:
-                self.db_connection.rollback()
-            except:
-                pass
+            messagebox.showerror("Ошибка", f"Не удалось добавить нагрузку: {e}")
+    
+    def insert_workload(self, data):
+        teacher_name = data[0]
+        subject_name = data[1]
+        
+        # Находим ID преподавателя и предмета по их данным
+        teacher_id = next(teacher[0] for teacher in self.teachers if f"{teacher[1]} {teacher[2]} {teacher[3]}" == teacher_name)
+        subject_id = next(subject[0] for subject in self.subjects if f"{subject[1]}" == subject_name)
+        
+        cur = self.db_connection.cursor()
+        cur.execute(INSERT_WORKLOAD_SQL, (teacher_id, subject_id, data[2]))
+        self.db_connection.commit()
+        cur.close()
     
     def show_workload(self):
-        try:
-            workload = self.fetch_workload()
-            for row in self.workload_table.get_children():
-                self.workload_table.delete(row)
-            for item in workload:
-                self.workload_table.insert('', 'end', values=item)
-        except Exception as e:
-            messagebox.showerror("Ошибка", f"Ошибка при загрузке нагрузки: {str(e)}")
+        workload = self.fetch_workload()
+        for row in self.workload_table.get_children():
+            self.workload_table.delete(row)
+        for item in workload:
+            teacher_name = next(f"{teacher[1]} {teacher[2]} {teacher[3]}" for teacher in self.teachers if teacher[0] == item[1])
+            subject_name = next(f"{subject[1]}" for subject in self.subjects if subject[0] == item[2])
+            self.workload_table.insert('', 'end', values=(item[0], teacher_name, subject_name, item[3]))
     
     def fetch_workload(self):
         cur = self.db_connection.cursor()
@@ -168,87 +148,83 @@ class WorkloadDistribution:
         cur.close()
         return workload
     
+    def fetch_teachers(self):
+        cur = self.db_connection.cursor()
+        cur.execute(FETCH_TEACHERS_FOR_WORKLOAD_SQL)
+        teachers = cur.fetchall()
+        cur.close()
+        return teachers
+    
+    def fetch_subjects(self):
+        cur = self.db_connection.cursor()
+        cur.execute(FETCH_SUBJECTS_FOR_WORKLOAD_SQL)
+        subjects = cur.fetchall()
+        cur.close()
+        return subjects
+    
     def delete_record(self):
+        if not self.workload_table.selection():
+            messagebox.showwarning("Предупреждение", "Выберите запись для удаления!")
+            return
+        
+        selected_item = self.workload_table.selection()[0]
+        workload_id = self.workload_table.item(selected_item, 'values')[0]
+        
         try:
-            selected_items = self.workload_table.selection()
-            if not selected_items:
-                messagebox.showwarning("Предупреждение", "Выберите запись для удаления")
-                return
-            
-            selected_item = selected_items[0]
-            workload_id = self.workload_table.item(selected_item, 'values')[0]
-            
-            # Подтверждение удаления
-            result = messagebox.askyesno("Подтверждение", "Вы уверены, что хотите удалить эту запись?")
-            if not result:
-                return
-            
             cur = self.db_connection.cursor()
             cur.execute(DELETE_WORKLOAD_SQL, (workload_id,))
             self.db_connection.commit()
             cur.close()
             
             self.workload_table.delete(selected_item)
-            messagebox.showinfo("Успех", "Запись успешно удалена!")
+            self.clear_entries()
+            messagebox.showinfo("Успех", "Нагрузка успешно удалена!")
             
+            # Обновляем данные в фильтрах
+            if self.app and hasattr(self.app, 'data_filter'):
+                self.app.data_filter.refresh_data()
         except Exception as e:
-            messagebox.showerror("Ошибка", f"Ошибка при удалении записи: {str(e)}")
-            try:
-                self.db_connection.rollback()
-            except:
-                pass
+            self.db_connection.rollback()
+            messagebox.showerror("Ошибка", f"Не удалось удалить нагрузку: {e}")
     
     def edit_record(self):
+        if not self.workload_table.selection():
+            messagebox.showwarning("Предупреждение", "Выберите запись для редактирования!")
+            return
+        
+        selected_item = self.workload_table.selection()[0]
+        workload_id = self.workload_table.item(selected_item, 'values')[0]
+        data = [
+            self.teacher_combobox.get(),
+            self.subject_combobox.get(),
+            self.group_entry.get()
+        ]
+        
+        if not data[0] or not data[1] or not data[2]:
+            messagebox.showwarning("Предупреждение", "Преподаватель, предмет и группа являются обязательными полями!")
+            return
+        
         try:
-            selected_items = self.workload_table.selection()
-            if not selected_items:
-                messagebox.showwarning("Предупреждение", "Выберите запись для редактирования")
-                return
+            teacher_name = data[0]
+            subject_name = data[1]
             
-            selected_item = selected_items[0]
-            workload_id = self.workload_table.item(selected_item, 'values')[0]
+            # Находим ID преподавателя и предмета по их данным
+            teacher_id = next(teacher[0] for teacher in self.teachers if f"{teacher[1]} {teacher[2]} {teacher[3]}" == teacher_name)
+            subject_id = next(subject[0] for subject in self.subjects if f"{subject[1]}" == subject_name)
             
-            teacher_name = self.teacher_combobox.get()
-            subject_name = self.subject_combobox.get()
-            group_number = self.group_entry.get().strip()
-            
-            if not teacher_name or not subject_name or not group_number:
-                messagebox.showwarning("Предупреждение", "Заполните все поля")
-                return
-            
-            # Получаем ID преподавателя
             cur = self.db_connection.cursor()
-            cur.execute("SELECT teacher_id FROM teachers WHERE CONCAT(last_name, ' ', first_name, ' ', middle_name) = %s", (teacher_name,))
-            teacher_result = cur.fetchone()
-            if not teacher_result:
-                messagebox.showwarning("Предупреждение", "Преподаватель не найден")
-                cur.close()
-                return
-            teacher_id = teacher_result[0]
-            
-            # Получаем ID предмета
-            cur.execute("SELECT subject_id FROM subjects WHERE subject_name = %s", (subject_name,))
-            subject_result = cur.fetchone()
-            if not subject_result:
-                messagebox.showwarning("Предупреждение", "Предмет не найден")
-                cur.close()
-                return
-            subject_id = subject_result[0]
-            
-            cur.execute(EDIT_WORKLOAD_SQL, (teacher_id, subject_id, group_number, workload_id))
+            cur.execute(EDIT_WORKLOAD_SQL, (teacher_id, subject_id, data[2], workload_id))
             self.db_connection.commit()
             cur.close()
-            
             self.show_workload()
             self.clear_entries()
-            messagebox.showinfo("Успех", "Запись успешно обновлена!")
+            messagebox.showinfo("Успех", "Данные нагрузки успешно обновлены!")
             
+            # Обновляем данные в фильтрах
+            if self.app and hasattr(self.app, 'data_filter'):
+                self.app.data_filter.refresh_data()
         except Exception as e:
-            messagebox.showerror("Ошибка", f"Ошибка при редактировании записи: {str(e)}")
-            try:
-                self.db_connection.rollback()
-            except:
-                pass
+            messagebox.showerror("Ошибка", f"Не удалось обновить данные: {e}")
     
     def clear_entries(self):
         self.teacher_combobox.set('')
