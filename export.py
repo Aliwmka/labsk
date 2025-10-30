@@ -1,4 +1,5 @@
 from docx import Document
+from docx.table import Table
 import pandas as pd
 import tkinter as tk
 from tkinter import filedialog, messagebox
@@ -8,6 +9,7 @@ from sql_requests import (
 )
 
 def export_to_word(instance):
+    """Экспорт данных в Word"""
     # Получаем данные из таблицы
     rows = [(instance.results_table.item(item)["values"]) for item in instance.results_table.get_children()]
     
@@ -39,6 +41,7 @@ def export_to_word(instance):
     messagebox.showinfo("Успех", f"Отчет сохранен в {filename}")
 
 def export_to_excel(instance):
+    """Экспорт данных в Excel"""
     # Получаем данные из таблицы
     rows = [(instance.results_table.item(item)["values"]) for item in instance.results_table.get_children()]
     columns = instance.results_table["columns"]
@@ -56,10 +59,52 @@ def export_to_excel(instance):
     df.to_excel(filename, index=False)
     messagebox.showinfo("Успех", f"Отчет сохранен в {filename}")
 
-def import_from_excel(instance, table_type):
+def import_from_word(instance):
+    """Импорт данных из Word файла"""
+    file_path = filedialog.askopenfilename(
+        title="Выберите Word файл для импорта",
+        filetypes=[("Word files", "*.docx")]
+    )
+    
+    if not file_path:
+        return
+    
+    try:
+        doc = Document(file_path)
+        data = []
+        
+        # Ищем таблицу в документе
+        for table in doc.tables:
+            # Пропускаем заголовок таблицы
+            for i, row in enumerate(table.rows):
+                if i == 0:  # Пропускаем заголовок
+                    continue
+                
+                row_data = [cell.text for cell in row.cells]
+                if len(row_data) >= 4:  # ID, Преподаватель, Предмет, Группа
+                    data.append(row_data)
+        
+        if not data:
+            messagebox.showwarning("Предупреждение", "В файле Word не найдено данных для импорта")
+            return
+        
+        # Очищаем текущую таблицу
+        for row in instance.results_table.get_children():
+            instance.results_table.delete(row)
+        
+        # Добавляем данные в таблицу
+        for row_data in data:
+            instance.results_table.insert('', 'end', values=row_data)
+        
+        messagebox.showinfo("Успех", f"Успешно импортировано {len(data)} записей из Word файла")
+        
+    except Exception as e:
+        messagebox.showerror("Ошибка", f"Ошибка при импорте из Word: {str(e)}")
+
+def import_from_excel(instance):
     """Импорт данных из Excel файла"""
     file_path = filedialog.askopenfilename(
-        title="Выберите файл Excel для импорта",
+        title="Выберите Excel файл для импорта",
         filetypes=[("Excel files", "*.xlsx *.xls")]
     )
     
@@ -67,165 +112,102 @@ def import_from_excel(instance, table_type):
         return
     
     try:
+        # Читаем Excel файл
         df = pd.read_excel(file_path)
         
-        if table_type == "teachers":
-            import_teachers_from_df(instance, df)
-        elif table_type == "subjects":
-            import_subjects_from_df(instance, df)
-        elif table_type == "workload":
-            import_workload_from_df(instance, df)
+        # Проверяем наличие необходимых колонок
+        required_columns = ['ID', 'Преподаватель', 'Предмет', 'Группа']
+        missing_columns = [col for col in required_columns if col not in df.columns]
         
-        messagebox.showinfo("Успех", "Данные успешно импортированы!")
+        if missing_columns:
+            messagebox.showerror("Ошибка", f"В файле отсутствуют колонки: {', '.join(missing_columns)}")
+            return
+        
+        # Очищаем текущую таблицу
+        for row in instance.results_table.get_children():
+            instance.results_table.delete(row)
+        
+        # Добавляем данные в таблицу
+        for _, row in df.iterrows():
+            row_data = [
+                int(row['ID']) if pd.notna(row['ID']) else 0,
+                str(row['Преподаватель']),
+                str(row['Предмет']),
+                str(row['Группа'])
+            ]
+            instance.results_table.insert('', 'end', values=row_data)
+        
+        messagebox.showinfo("Успех", f"Успешно импортировано {len(df)} записей из Excel файла")
         
     except Exception as e:
-        messagebox.showerror("Ошибка", f"Ошибка при импорте данных: {str(e)}")
+        messagebox.showerror("Ошибка", f"Ошибка при импорте из Excel: {str(e)}")
 
-def import_teachers_from_df(instance, df):
-    """Импорт преподавателей из DataFrame"""
-    required_columns = ['Фамилия', 'Имя', 'Отчество', 'Ученая степень', 'Должность', 'Стаж']
-    
-    for col in required_columns:
-        if col not in df.columns:
-            raise ValueError(f"Отсутствует обязательная колонка: {col}")
-    
-    imported_count = 0
-    updated_count = 0
-    
-    for _, row in df.iterrows():
-        data = (
-            str(row['Фамилия']), str(row['Имя']), str(row['Отчество'] or ''),
-            str(row['Ученая степень'] or ''), str(row['Должность'] or ''), 
-            int(row['Стаж']) if pd.notna(row['Стаж']) else 0
-        )
+def import_data_to_database(instance):
+    """Импорт данных из текущей таблицы в базу данных"""
+    try:
+        # Получаем данные из таблицы
+        rows = [(instance.results_table.item(item)["values"]) for item in instance.results_table.get_children()]
         
-        # Проверяем, существует ли уже такой преподаватель
-        cur = instance.db_connection.cursor()
-        cur.execute(
-            "SELECT teacher_id FROM teachers WHERE last_name = %s AND first_name = %s AND middle_name = %s",
-            (data[0], data[1], data[2])
-        )
-        existing = cur.fetchone()
+        if not rows:
+            messagebox.showwarning("Предупреждение", "Нет данных для импорта в базу данных")
+            return
         
-        if existing:
-            # Обновляем существующую запись
-            cur.execute(EDIT_TEACHER_SQL, (*data, existing[0]))
-            updated_count += 1
-        else:
-            # Добавляем новую запись
-            cur.execute(INSERT_TEACHER_SQL, data)
-            imported_count += 1
+        imported_count = 0
+        updated_count = 0
         
-        instance.db_connection.commit()
-        cur.close()
-    
-    messagebox.showinfo("Импорт преподавателей", 
-                       f"Импортировано: {imported_count} записей\nОбновлено: {updated_count} записей")
-
-def import_subjects_from_df(instance, df):
-    """Импорт предметов из DataFrame"""
-    required_columns = ['Название предмета', 'Количество часов']
-    
-    for col in required_columns:
-        if col not in df.columns:
-            raise ValueError(f"Отсутствует обязательная колонка: {col}")
-    
-    imported_count = 0
-    updated_count = 0
-    
-    for _, row in df.iterrows():
-        data = (
-            str(row['Название предмета']), 
-            int(row['Количество часов']) if pd.notna(row['Количество часов']) else 0
-        )
+        for row in rows:
+            workload_id = int(row[0]) if row[0] else 0
+            teacher_name = str(row[1])
+            subject_name = str(row[2])
+            group_number = str(row[3])
+            
+            # Получаем ID преподавателя
+            cur = instance.db_connection.cursor()
+            cur.execute(
+                "SELECT teacher_id FROM teachers WHERE CONCAT(last_name, ' ', first_name, ' ', middle_name) = %s",
+                (teacher_name,)
+            )
+            teacher_result = cur.fetchone()
+            
+            if not teacher_result:
+                messagebox.showwarning("Предупреждение", f"Преподаватель не найден: {teacher_name}")
+                continue
+            
+            teacher_id = teacher_result[0]
+            
+            # Получаем ID предмета
+            cur.execute(
+                "SELECT subject_id FROM subjects WHERE subject_name = %s",
+                (subject_name,)
+            )
+            subject_result = cur.fetchone()
+            
+            if not subject_result:
+                messagebox.showwarning("Предупреждение", f"Предмет не найден: {subject_name}")
+                continue
+            
+            subject_id = subject_result[0]
+            
+            if workload_id > 0:
+                # Обновляем существующую запись
+                cur.execute(EDIT_WORKLOAD_SQL, (teacher_id, subject_id, group_number, workload_id))
+                updated_count += 1
+            else:
+                # Добавляем новую запись
+                cur.execute(INSERT_WORKLOAD_SQL, (teacher_id, subject_id, group_number))
+                imported_count += 1
+            
+            instance.db_connection.commit()
+            cur.close()
         
-        # Проверяем, существует ли уже такой предмет
-        cur = instance.db_connection.cursor()
-        cur.execute(
-            "SELECT subject_id FROM subjects WHERE subject_name = %s",
-            (data[0],)
-        )
-        existing = cur.fetchone()
+        messagebox.showinfo("Успех", 
+                           f"Импорт в базу данных завершен:\n"
+                           f"Добавлено: {imported_count} записей\n"
+                           f"Обновлено: {updated_count} записей")
         
-        if existing:
-            # Обновляем существующую запись
-            cur.execute(EDIT_SUBJECT_SQL, (*data, existing[0]))
-            updated_count += 1
-        else:
-            # Добавляем новую запись
-            cur.execute(INSERT_SUBJECT_SQL, data)
-            imported_count += 1
-        
-        instance.db_connection.commit()
-        cur.close()
-    
-    messagebox.showinfo("Импорт предметов", 
-                       f"Импортировано: {imported_count} записей\nОбновлено: {updated_count} записей")
-
-def import_workload_from_df(instance, df):
-    """Импорт нагрузки из DataFrame"""
-    required_columns = ['Преподаватель', 'Предмет', 'Группа']
-    
-    for col in required_columns:
-        if col not in df.columns:
-            raise ValueError(f"Отсутствует обязательная колонка: {col}")
-    
-    imported_count = 0
-    updated_count = 0
-    skipped_count = 0
-    
-    for _, row in df.iterrows():
-        teacher_name = str(row['Преподаватель'])
-        subject_name = str(row['Предмет'])
-        group_number = str(row['Группа'])
-        
-        # Получаем ID преподавателя
-        cur = instance.db_connection.cursor()
-        cur.execute(
-            "SELECT teacher_id FROM teachers WHERE CONCAT(last_name, ' ', first_name, ' ', middle_name) = %s",
-            (teacher_name,)
-        )
-        teacher_result = cur.fetchone()
-        
-        if not teacher_result:
-            skipped_count += 1
-            continue
-        
-        teacher_id = teacher_result[0]
-        
-        # Получаем ID предмета
-        cur.execute(
-            "SELECT subject_id FROM subjects WHERE subject_name = %s",
-            (subject_name,)
-        )
-        subject_result = cur.fetchone()
-        
-        if not subject_result:
-            skipped_count += 1
-            continue
-        
-        subject_id = subject_result[0]
-        
-        # Проверяем, существует ли уже такая нагрузка
-        cur.execute(
-            "SELECT workload_id FROM workload WHERE teacher_id = %s AND subject_id = %s AND group_number = %s",
-            (teacher_id, subject_id, group_number)
-        )
-        existing = cur.fetchone()
-        
-        if existing:
-            # Обновляем существующую запись
-            cur.execute(EDIT_WORKLOAD_SQL, (teacher_id, subject_id, group_number, existing[0]))
-            updated_count += 1
-        else:
-            # Добавляем новую запись
-            cur.execute(INSERT_WORKLOAD_SQL, (teacher_id, subject_id, group_number))
-            imported_count += 1
-        
-        instance.db_connection.commit()
-        cur.close()
-    
-    messagebox.showinfo("Импорт нагрузки", 
-                       f"Импортировано: {imported_count} записей\n"
-                       f"Обновлено: {updated_count} записей\n"
-                       f"Пропущено (не найдены преподаватели/предметы): {skipped_count} записей")
+        # Обновляем данные в основном интерфейсе
+        if hasattr(instance, 'show_workload'):
+            instance.show_workload()
+            
+    except Exception as e:
+        messagebox.showerror("Ошибка", f"Ошибка при импорте в базу данных: {str(e)}")

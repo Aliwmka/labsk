@@ -1,7 +1,6 @@
 from tkinter import ttk
 import tkinter as tk
-from tkinter import filedialog, messagebox
-from export import export_to_word, export_to_excel, import_from_excel
+from export import export_to_word, export_to_excel, import_from_word, import_from_excel, import_data_to_database
 from sql_requests import (
     LOAD_TEACHERS_FOR_FILTER_SQL,
     LOAD_SUBJECTS_FOR_FILTER_SQL,
@@ -36,6 +35,13 @@ class DataFilter:
             show='headings')
         for label in self.results_table["columns"]:
             self.results_table.heading(label, text=label)
+        
+        # Настраиваем ширину колонок
+        self.results_table.column('ID', width=50, anchor=tk.CENTER)
+        self.results_table.column('Преподаватель', width=200, anchor=tk.W)
+        self.results_table.column('Предмет', width=150, anchor=tk.W)
+        self.results_table.column('Группа', width=100, anchor=tk.CENTER)
+        
         self.results_table.grid(row=2, column=0, columnspan=2, padx=10, pady=10, sticky='nsew')
         
         scrollbar = ttk.Scrollbar(self.parent_frame, orient="vertical", command=self.results_table.yview)
@@ -51,33 +57,33 @@ class DataFilter:
         buttons_frame.columnconfigure(1, weight=1)
         buttons_frame.columnconfigure(2, weight=1)
         buttons_frame.columnconfigure(3, weight=1)
-        buttons_frame.columnconfigure(4, weight=1)
         
-        # Первый ряд кнопок
+        # Первый ряд кнопок - фильтры
         ttk.Button(buttons_frame, text="Применить фильтр", command=self.apply_filter).grid(
             row=0, column=0, padx=5, pady=5, sticky='ew')
         
-        ttk.Button(buttons_frame, text="Очистить", command=self.clear_filters).grid(
+        ttk.Button(buttons_frame, text="Очистить фильтры", command=self.clear_filters).grid(
             row=0, column=1, padx=5, pady=5, sticky='ew')
         
-        word_button = ttk.Button(buttons_frame, text="Экспорт в Word", command=self.export_to_word)
-        word_button.grid(row=0, column=2, padx=5, pady=5, sticky='ew')
+        ttk.Button(buttons_frame, text="Обновить данные", command=self.refresh_data).grid(
+            row=0, column=2, padx=5, pady=5, sticky='ew')
         
-        excel_button = ttk.Button(buttons_frame, text="Экспорт в Excel", command=self.export_to_excel)
-        excel_button.grid(row=0, column=3, padx=5, pady=5, sticky='ew')
-        
-        # Второй ряд кнопок - импорт
-        ttk.Button(buttons_frame, text="Импорт преподавателей", command=lambda: self.import_data("teachers")).grid(
+        # Второй ряд кнопок - экспорт
+        ttk.Button(buttons_frame, text="Экспорт в Word", command=self.export_to_word).grid(
             row=1, column=0, padx=5, pady=5, sticky='ew')
         
-        ttk.Button(buttons_frame, text="Импорт предметов", command=lambda: self.import_data("subjects")).grid(
+        ttk.Button(buttons_frame, text="Экспорт в Excel", command=self.export_to_excel).grid(
             row=1, column=1, padx=5, pady=5, sticky='ew')
         
-        ttk.Button(buttons_frame, text="Импорт нагрузки", command=lambda: self.import_data("workload")).grid(
-            row=1, column=2, padx=5, pady=5, sticky='ew')
+        # Третий ряд кнопок - импорт
+        ttk.Button(buttons_frame, text="Импорт из Word", command=self.import_from_word).grid(
+            row=2, column=0, padx=5, pady=5, sticky='ew')
         
-        ttk.Button(buttons_frame, text="Обновить данные", command=self.refresh_data).grid(
-            row=1, column=3, padx=5, pady=5, sticky='ew')
+        ttk.Button(buttons_frame, text="Импорт из Excel", command=self.import_from_excel).grid(
+            row=2, column=1, padx=5, pady=5, sticky='ew')
+        
+        ttk.Button(buttons_frame, text="Импорт в базу", command=self.import_to_database).grid(
+            row=2, column=2, padx=5, pady=5, sticky='ew')
         
         self.load_teachers()
         self.load_subjects()
@@ -88,24 +94,23 @@ class DataFilter:
     def export_to_excel(self):
         export_to_excel(self)
     
-    def import_data(self, table_type):
-        """Импорт данных из Excel для указанного типа таблицы"""
-        try:
-            import_from_excel(self, table_type)
-            # После импорта обновляем комбобоксы
-            self.load_teachers()
-            self.load_subjects()
-            # Обновляем таблицу результатов
-            self.apply_filter()
-        except Exception as e:
-            messagebox.showerror("Ошибка импорта", f"Ошибка при импорте данных: {str(e)}")
+    def import_from_word(self):
+        """Импорт данных из Word отчета"""
+        import_from_word(self)
+    
+    def import_from_excel(self):
+        """Импорт данных из Excel отчета"""
+        import_from_excel(self)
+    
+    def import_to_database(self):
+        """Импорт данных из текущей таблицы в базу данных"""
+        import_data_to_database(self)
     
     def refresh_data(self):
         """Обновление всех данных"""
         self.load_teachers()
         self.load_subjects()
         self.apply_filter()
-        messagebox.showinfo("Обновление", "Данные успешно обновлены!")
     
     def clear_filters(self):
         self.teacher_combobox.set('')
